@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>เตือนตัง (Full App)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 500px; margin: auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2, h3 { text-align: center; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        input, button { padding: 10px; font-size: 16px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        #status { text-align: center; margin-top: 15px; font-weight: bold; }
+        .expense-item { list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+        .delete-btn { background-color: #dc3545; color: white; font-size: 12px; padding: 5px 8px; }
+        #totalSpend { text-align: center; font-size: 1.2em; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>💸 บันทึกรายจ่าย (เตือนตัง)</h2>
+        <form id="expenseForm">
+            <label>หมวดหมู่:</label> <input type="text" id="category" required>
+            <label>จำนวนเงิน (บาท):</label> <input type="number" id="amount" required>
+            <button type="submit" id="submitButton">บันทึก</button>
+        </form>
+        <p id="status"></p>
+        <hr>
+        <h3>รายการวันนี้</h3>
+        <ul id="expenseList"></ul>
+        <div id="totalSpend"></div>
+    </div>
+
+    <script>
+        // --- !!! แก้ไข 3 URL นี้ ให้เป็นของคุณ (จาก API Gateway) !!! ---
+        const API_ADD_URL = "https://YOUR_API_ID.execute-api.../default/addExpense";
+        const API_GET_URL = "https://YOUR_API_ID.execute-api.../default/expenses";
+        const API_DELETE_URL = "https://YOUR_API_ID.execute-api.../default/delete-expense";
+        // -----------------------------------------------------------------
+
+        const form = document.getElementById("expenseForm");
+        const statusEl = document.getElementById("status");
+        const listEl = document.getElementById("expenseList");
+        const totalEl = document.getElementById("totalSpend");
+
+        // 1. ดึงและแสดงผลรายการ
+        async function fetchExpenses() {
+            try {
+                const response = await fetch(API_GET_URL, { method: "GET" });
+                if (!response.ok) throw new Error("Failed to fetch list");
+                const items = await response.json();
+                renderList(items);
+            } catch (error) { listEl.innerHTML = `<li style="color:red">Error loading list</li>`; }
+        }
+        
+        // 2. วาด List
+        function renderList(items) {
+            listEl.innerHTML = "";
+            let total = 0;
+            if (items.length === 0) listEl.innerHTML = "<li>ยังไม่มีรายการ</li>";
+            items.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            items.forEach(item => {
+                total += item.amount;
+                const li = document.createElement("li");
+                li.className = "expense-item";
+                li.innerHTML = `<span>${item.category}: <strong>${item.amount}</strong> บาท</span>
+                              <button class="delete-btn" onclick="deleteItem('${item.date_expense_id}')">ลบ</button>`;
+                listEl.appendChild(li);
+            });
+            totalEl.innerText = `ยอดรวมวันนี้: ${total} บาท`;
+        }
+        
+        // 3. ลบรายการ
+        async function deleteItem(date_expense_id) {
+            if (!confirm("แน่ใจนะ ว่าจะลบ?")) return;
+            statusEl.innerText = "กำลังลบ...";
+            try {
+                const response = await fetch(API_DELETE_URL, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ "date_expense_id": date_expense_id })
+                });
+                if (!response.ok) throw new Error("Failed to delete");
+                statusEl.innerText = "ลบสำเร็จ!";
+                fetchExpenses();
+            } catch (error) { statusEl.innerText = "เกิดข้อผิดพลาดตอนลบ: " + error.message; }
+        }
+
+        // 4. เพิ่มรายการ
+        form.addEventListener("submit", async function(e) {
+            e.preventDefault();
+            statusEl.innerText = "กำลังบันทึก...";
+            document.getElementById("submitButton").disabled = true;
+            try {
+                const response = await fetch(API_ADD_URL, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        "category": document.getElementById("category").value,
+                        "amount": parseInt(document.getElementById("amount").value)
+                    })
+                });
+                if (!response.ok) throw new Error("Server Error: " + response.status);
+                const data = await response.json();
+                statusEl.innerText = data.alertSent ? "บันทึกสำเร็จ! (และส่งแจ้งเตือน!)" : "บันทึกสำเร็จ!";
+                form.reset();
+                fetchExpenses(); // โหลด List ใหม่
+            } catch (error) { statusEl.innerText = "เกิดข้อผิดพลาด: " + error.message; }
+            finally { document.getElementById("submitButton").disabled = false; }
+        });
+
+        // 5. สั่งให้ดึง List ทันทีที่เปิดหน้าเว็บ
+        window.addEventListener("DOMContentLoaded", fetchExpenses);
+    </script>
+</body>
+</html>
